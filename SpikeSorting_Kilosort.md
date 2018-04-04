@@ -13,11 +13,12 @@ cd path/to/your/favorite/source/code/location
 git clone https://github.com/cortex-lab/KiloSort.git
 ```
 
-[Here](https://github.com/cortex-lab/KiloSort/tree/master/Docs) are some instructions provided with the repository. It was sort of helpful, but not really.
+[Here](https://github.com/cortex-lab/KiloSort/tree/master/Docs) are some instructions provided with the repository. They were helpful (especially for Windows which I hardly ever use), but not exhaustive.
 
-**n.b., It appears this code was originally written for use with CUDA 7.5, whereas the current version of CUDA is 9.x. As you will see later, MATLAB's default version of CUDA it looks for is 9.0. I am not sure (a) if Marius's CUDA code will work with version 9.x or (b) if MATLAB 2018 will work with CUDA 7.5.**
+*n.b., It appears this code was originally written for use with CUDA 7.5, whereas the current version of CUDA is 9.x. As you will see later, MATLAB 2018's default version of CUDA it looks for is 9.0. I am not sure (a) if Marius's CUDA code will work with version 9.x or (b) if MATLAB 2018 will work with CUDA 7.5.*
 
 **UPDATE :** Using version 9.1 of the CUDA toolkit (rather than 7.5 or 9.0) did indeed work. Follow the below instructions.
+**UPDATE :** MATLAB 2017 appears to be compatible with CUDA v8.x (see Windows-specific sections). It may still be possible to use CUDA v9.x with a deep dive into configuration files, but I decided not to fight that battle and downloaded CUDA v8.0 from the legacy downloads page.
 
 # Downloading npy-matlab
 To integrate with Phy (the curating viewer written in Python), KiloSort (which is Matlab-based) needs to be able to read/write numpy `*.npy` files. Apparently, the lab has written some code for this which you'll need to add to your path before you can run KiloSort/save the results.
@@ -28,12 +29,42 @@ git clone https://github.com/kwikteam/npy-matlab.git
 ```
 
 # Installing CUDA toolkit
-This is reasonably well-documented, and it's been a few months since I have installed CUDA. When I install an NVIDIA GPU on my lab computer, I can flesh this section out. For now, I'm skipping it.
+This is reasonably well-documented ([linux](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html), [windows](http://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html), [macOS])(http://docs.nvidia.com/cuda/cuda-installation-guide-mac-os-x/index.html).
 
-**The computer I am using has version 9.1, so I am going to see if KiloSort + MATLAB 2018 + CUDA 9.1 play nice together.** ~~This may crash and burn.~~
+Download the CUDA toolkit [here](https://developer.nvidia.com/cuda-downloads) & install. First, it would be a good idea to see what version of CUDA your version of MATLAB supports. Inspect the top of the configuration file(s) buried in the following location.
+```shell
+/path/to/MATLAB/R201xx/toolbox/distcomp/gpu/extern/src/mex/
+```
+*It appears that MATLAB 2018 supports CUDA v9, 2017 supports v8, and so on.*
 
-# Matlab mexCUDA & Kilosort
-The GPU augmentation for Kilosort is done by compiling CUDA code and calling from MATLAB. This functionality is built with MATLAB mexGPU, so building this is the only "installation" step that is required. After that, you just need to make sure that the code repository is in your MATLAB path and make sure you hand it a `struct` that contains the configuration options for sorting your dataset.
+**The Linux machine used for this installation has version 9.1, so I am going to see if KiloSort + MATLAB 2018 + CUDA 9.1 play nice together.** ~~This may crash and burn.~~
+
+**I briefly tried using 9.1 with MATLAB 2016 and 2017 on the Windows machine used for this installation, but found this to be more work than it was worth. I instead dowloaded v8.0 for MATLAB 2017b on this machine.**
+
+## Windows-specific Steps
+### Installing Visual C++ Compiler
+If using Windows, you will need to download+install Microsoft's Visual Studio (VS) in order to have a CUDA-compatible C++ compiler. The version of VS you download+install should match the version being searched for in the `mexcuda` configuration file (see `mexcuda` section below). For example, in MATLAB 2017b, inspecting the configuration file `nvcc_msvcpp2015.xml` it seems that the compiler it is looking for is `MSVCPP14` (Microsoft Visual C++ 14.0), which comes with VS 2015. So, VS 2015 is the version to download and install. *n.b.*, I wasted a lot of time trying to figure out why installing VS 2015 was not actually installing the compiler--or at least not installing it where MATLAB knew to look. It turns out that installing this compiler is a non-default option (see the [warning on this page](https://msdn.microsoft.com/en-us/library/60k1461a.aspx)). **You need to do the custom install and make sure the C/C++ options are checked.**
+
+Once the C++ compiler is installed, you need to configure `mex` to actually use it. The easiest way to do this is to run mex with the setup option and let it give you the appropriate suggestions. In MATLAB, type the following.
+```matlab
+mex -setup
+```
+This should print to the console a number of options. MS Visual C++ 2015 (or whichever version you needed for your release of MATLAB/CUDA) should be one of the options now! If not, something went wrong with the previous step: *e.g.*, the C++ compiler option was not checked at install. Or whichever version you installed. Run the `mex -setup:` command, with the appriate string for the configuration file suggested by MATLAB.
+
+### Prevent Windows from killing KiloSort
+Also, it appears that Windows will kill a process (like KiloSort) running on a GPU too long if that card is also being used to render your display. First, open up a command window and launch the registry editor.
+```
+regedit
+```
+
+Navigate to `HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\GraphicsDrivers`. Create new DWORD key called `TdrLevel`, and set its value to `0`.
+**Disclaimer:**  I do not know the details of what this actually does. This comes from the KiloSort/Docs folder and I blindly obeyed.
+
+### Setting CUDA Max Cache Size
+Finally, the creator suggests setting the max cache size allowed for CUDA to something large like 1GB. To do this, create an environment variable (My PC -> Properties -> Advanced System Settings -> Environment Variables) with some large value like 1e9: `CUDA_CACHE_MAXSIZE` to `1073741824`. Note that I tried it without this step first and then again with it and I didn't notice any big difference, so this step may be unnecessary.
+
+# Matlab `mexcuda` & Kilosort
+KiloSort's GPU distributed computing is done by compiling CUDA code and calling from MATLAB. This functionality is built with MATLAB `mexcuda`, and this is the only "installation" step that is required before actually running KiloSort. After that, you just need to make sure that the code repository is in your MATLAB path and make sure you hand it a `struct` that contains the configuration options for sorting your dataset.
 
 *n.b., At this writing I am using Matlab R2018a on a machine running Ubuntu 16.04 and outfitted with an NVIDIA GTX 1080 and 2 4-core CPUs. Some details may vary for other setups. This is a computer I only have access to temporarily while home for Easter!*
 
@@ -41,7 +72,7 @@ The GPU augmentation for Kilosort is done by compiling CUDA code and calling fro
 If you haven't already, download/install the parallel computing toolbox.
 
 ## Give it a go as-is
-As a first check, let's try running the author's `mexGPUall.m` file and see if it magically works. This is the file that we will be running to actually build the GPU functions that will be called later by KiloSort when it runs in MATLAB.
+As a first check, let's try running the author's `mexGPUall.m` file and see if it magically works. It won't! This is the file that we will be running to actually build the GPU functions that will be called later by KiloSort when it runs in MATLAB.
 
 ```shell
 cd /path/to/KiloSort/CUDA
@@ -51,15 +82,18 @@ matlab -nodesktop #or you can just launch matlab with the GUI
 mexGPUall
 ```
 
-**Initial Problems**
+**Initial Problems (Linux)**
 1. *"Warning: Version 9.0 of the CUDA toolkit could not be found. If installed, set MW_NVCC_PATH environment variable to location of nvcc compiler."*
 2. *Error using mex
 No supported compiler was found. For options, visit https://www.mathworks.com/support/compilers.*
 
 Note that I found it was a little misleading  that Problem 1 was a non-fatal warning. I thought there was some other required compiler that was not available to mex that ultimated killed the process. However, after a few minutes of checks I found that MATLAB could indeed "see" `gcc`/`g++`. It really ended up being because of the first warning.
 
-## Fixing the initial problems.
-Problem 1 arose because both CUDA 8 and 9.1 were installed (rather than 9.0, which it was looking for) and the `nvcc` that was sym-linked into the existing `PATH` variable was from version 8. I set the environment variable as suggested by the warning and this did not immediately solve the problem. But it was a necessary step.
+**Initial Problems (Windows)**
+1. MATLAB could not find a CUDA-compatible C++ compiler (even after trying to install MSVC++ compiler). Following the steps above for the custom install of the appropriate version of Visual Studio fixed this problem.
+
+## `mexcuda` configuration (Linux)
+Problem 1 arose because both CUDA 8 and 9.1 were installed (rather than 9.0, which MATLAB was looking for) and the `nvcc` that was sym-linked into the existing `PATH` variable was from version 8. I set the environment variable as suggested by the warning and this did not immediately solve the problem. But it was a necessary step.
 
 This is personal preference, but my M.O. is to edit/create environment variables using the `.profile` file located in the user home directory. I believe is one of the last files `bash` looks for at login. Some folks use `.bashrc` , `.bash_profile`, or other such files. There are some slight differences in how they're handled but in general it shouldn't matter.
 ```shell
@@ -69,12 +103,12 @@ In the file of your choosing add the following line.
 ```shell
 export MW_NVCC_PATH="/usr/local/cuda/bin"
 
-#n.b. if you have multiple versions of CUDA installed, version 9.0 is at least the default for Matlab 2018.
+# n.b. if you have multiple versions of CUDA installed, version 9.0 is at least the default for Matlab 2018.
 # I used this instead:
 export MW_NVCC_PATH="/usr/local/cuda-9.1/bin"
 ```
 
-Presumably you have already added `CUDA_HOME` and added it to your `PATH` environment variable when you installed CUDA originally. If not, you'll want to do this. *Logout* of the current shell and login to a new shell (*i.e.*, just open up a new terminal). Confirm that the environment variable was made and exported and that the version of `nvcc` is 9.1.
+Presumably you (or the installer) have already added `CUDA_HOME` and added it to your `PATH` environment variable when you installed CUDA originally. If not, you'll want to do this. *Logout* of the current shell and login to a new shell (*i.e.*, just open up a new terminal). Confirm that the environment variable was made and exported and that the version of `nvcc` is 9.1.
 ```shell
 echo $MW_NVCC_PATH
 $MW_NVCC_PATH/nvcc --version
@@ -84,15 +118,16 @@ You will notice that the version of CUDA that was already installed is **9.1**, 
 As an experiment, I tried to simply override the version of the CUDA compiler (`nvcc`) that MATLAB was looking for. Buried in MATLAB's source code, there is an `.xml` file that has build configuration/instructions for mexGPU. I haven't looked into the details, but it seems like it is MATLAB mex's version of a GNU makefile.
 
 **Warning**
-1. Before editing this file, make a copy of the original in case something is broken in the process.
+1. Before editing this file, make a copy of the original in case something is broken in the process. **A safer alternative is to copy the contents of this file and overwrite the contents of the generic linux (or Windows) `*.xml` file into the `KiloSort/CUDA` subdirectory, and then do the edits suggested below.**
 2. I am only trying this manual override because I assume the differences between version 9.0 and 9.1 are not that great. I would **not** suggest doing this if your version of MATLAB is looking for 7.x or 8.x.
+**Update:** I tried using CUDA 9.x when MATLAB was looking for 8.0 with the Windows install, and found it was more work than it was worth.
 
 ```shell
 cd /path/to/MATLAB/R2018a/toolbox/distcomp/gpu/extern/src/mex/glnxa64
 sudo nano nvcc_g++.xml
 ```
 
-You don't have to use `nano`, but I find it to be the most convenient commandline text editor. You can use any text editor. The key is that you have to have superuser priveleges in order to overwrite this file where it is in the default Linux installs.
+You don't have to use `nano`, but I find it to be the most convenient commandline text editor. You can use any text editor. The key is that you have to have superuser priveleges in order to overwrite this file where it is in the default Linux installs. Again, it will be safer to simply copy the contents of this file into the appropriate `*.xml` file in the KiloSort repo.
 
 In the file, I replaced any mention of "9.0" with "9.1". I believe there are 3-4 lines that need changing. Like I said this file (`nvcc_g++.xml`) appears to be a build/compiler configuration file. It is hard-coded to check for 9.0. Operating under the assumption the differences between 9.0 and 9.1 are small, I figured if I just changed the checks that are being done at configuration, things would run smoothly enough.
 
@@ -115,10 +150,22 @@ At least in C/C++ (but I assume it's also true using CUDA)  `int` is 16-bits. A 
 
 Anyway, it does succesfully complile now, but I am unsure of the resulting code is functional. I will be checking that next.
 
+## `mexcuda` configuration (Windows)
+As noted above, I opted to match versions of MSVC++ and CUDA (nvcc) to the release of MATLAB. I found it more difficult to *full-version* disparities in any one of these three players than it was worth. In particular, while mex would work with the latest version of MSVC++, I couldn't make the right changes to the `mexcuda` configuration file in 2017b to make this latest version work with CUDA.
+
+Because versions of the C++ compiler and CUDA were what the MATLAB release expected, this configuration was simpler at the end of the day. I simply replaced the contents of `KiloSort/CUDA/mex_CUDA_win64.xml` with the contents of MATLAB's `nvcc_msvcpp2015.xml` configuration file buried in the usual location. Note the exact name of that file will vary depending on the version of Visual C++.
+
+Once you've done that, simply re-run the `mexGPUall.m` script.
+
 # Testing build on synthetic data
 The KiloSort directory has an `eMouse` subdirectory. You will need to change some paths in `master_eMouse.m` for it to work for your computer. For example, you need to provide the path to KiloSort source code and the nmpy-matlab directory. Once you do that, simply run `master_eMouse.m`.
 
 This file creates a 1000-second 32-channel synthetic dataset (fs=25kHz). In the comments, the creator notes that using a GTX 1080 GPU and an SSD, it took 55 seconds on synthetic data. Using the setup I currently have access to (which has the same GPU), I am seeing 38 seconds to completion. So, it is possible that we could see sorting times of 5% the time of the dataset. However, I imagine as the dataset gets larger, the efficiency of memory handling is probably going to keep this from happening on full datasets.
+
+# Testing on Small Experimental Dataset
+The Linux machine above finished loading, pre-processing, sorting, and saving results for a 4GB dataset (fs = 25 kHz) in 100 seconds.
+
+The communal Windows spike sorting machine took 400 seconds. It took ~25 minutes to sort the entire 17 GB dataset that the original 4 GB dataset was sub-selected from.
 
 # Data Pre-processing
 ## Formatting Data for Sorting
@@ -178,7 +225,7 @@ variable_chan = h5read(file,'/location/of/var/within/file',[1 chan],[variable_sz
 This is very fast because the data is being directly addressed with no memory mapping, *etc.*, required. When I have more time, I will wrap user-friendly code around this functionality, specifically for the Stanley Lab data structure I let stagnate for about 9 months.
 
 ## Example Preprocessing Script (Matlab)
-**You will notice below that KiloSort does a pre-processing step, which includes BP filtering. In the future, I should probably bypass filtering at this stage.**
+**You will notice below that KiloSort does a pre-processing step, which includes BP filtering. In the future, I should probably bypass filtering at this stage or disable that part of the KiloSort code.**
 
 Here is my preprocessing script as of this writing (2018/03/28).
 
@@ -268,16 +315,16 @@ save([destDir binFileName '.mat'],'-v7.3', 'BPfilt_params', 'ldDir', 'filenames'
 # Make Channel Map
 You need to feed KiloSort a channel map, a logical array that indicates which channels are good or "connected" rather than dead, and the x, y, and shank number coordinates. The x and y coordinates need only be in relative units, not absolute--at least this is what the creator's comments suggest.
 
-1. `chanMap` int[1 x nChan] : e.g., `chanMap = 1:nChan;`
+1. `chanMap` uint[1 x nChan] : e.g., `chanMap = 1:nChan;`
 2. `connected` logical[nChan x 1] : e.g., `connected = true(nChan,1); %if all channels are good`
 3. `xcoords` double[1 x nChan]
 4. `ycoords` double[1 x nChan]
-5. `kcoords` int[1 x nChan]: e.g., `kcoords = ones(1, nChan); %if all channels on same shank`
+5. `kcoords` uint[1 x nChan]: e.g., `kcoords = ones(1, nChan); %if all channels on same shank`
 6. `fs` double
 
 **You need to save these six variables into a composite `*.mat` (v7.3) file.** You can call it whatever. The name will be configured next.
 
-# Configuration File
+# Configuration Script
 Currently, I do not know what most of these options do because I haven't read the NIPS paper, but you need to create an options `struct` that has the following fields. I will have to get back to you on which (if any) settings we should be changing.
 
 ```matlab
@@ -377,7 +424,7 @@ This will dump the results of the sorting procedure into `.py` and `.npy` files 
 The dreaded manual sort curation is done using "Cortex Lab"'s [`phy`](https://github.com/kwikteam/phy).
 
 ## Installing `miniconda`, `phy` & `phy-contrib`
-`phy` is run in a conda environment. I've had problems with these environments in the past, so resisted using `conda`, but I had to suck it up and re-install it. It is certainly the best way to insulate varying versions of python and other packages that are needed to make `phy` work--especially if you use python for other things. At least on macOS you simply [download](https://conda.io/miniconda.html) the install shell script, give it executable permissions and run. Note that you can download the python 3.6, 64-bit version.
+`phy` is best installed/run in a `conda` environment. I've had problems with these environments in the past, so resisted using `conda`, but I had to suck it up and re-install it. It is certainly the best way to insulate varying versions of python and other packages that are needed to make `phy` work--especially if you use python for other things. At least on macOS you simply [download](https://conda.io/miniconda.html) the install shell script, give it executable permissions and run. Note that you can download the python 3.6, 64-bit version.
 
 ```shell
 cd path/to/shell/script
@@ -391,7 +438,7 @@ cd path/to/file
 conda env create -f phy.yml
 ```
 
-Then, you follow the instructions on the `phy` GitHub page.
+Then, you can follow the instructions on the `phy` GitHub page.
 
 ```shell
 source activate phy  # omit the `source` on Windows
@@ -408,6 +455,8 @@ source activate phy
 phy template-gui params.py
 ```
 
+Note that running with the above syntax, you must have the binary data file used for sorting in the same directory as the outputs of KiloSort. Otherwise, you will only see the identified template waveforms (rather than real snippets) and you will not be able to use the TraceView, which is one of the most useful features of this GUI.
+
 After this step, I believe everyone else in lab is more expert than I am. [Here is the documentation I am working from](http://phy-contrib.readthedocs.io/en/latest/template-gui/). I will stop here (for now).
-[2018/04/02]
+[2018/04/04]
 
